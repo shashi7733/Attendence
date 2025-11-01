@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition Attendance</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Face Recognition Attendance</h1>
+            <p>AI-Powered | Real-time | Secure</p>
+        </header>
+
+        <div class="grid">
+            <!-- Add Person Card -->
+            <div class="card">
+                <h2>Add New Student</h2>
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" placeholder="e.g., John Doe" required>
+                </div>
+                <div class="form-group">
+                    <label for="roll">Roll Number</label>
+                    <input type="text" id="roll" placeholder="e.g., CS101" required>
+                </div>
+                <button class="btn" onclick="startCapture()">Start Face Capture</button>
+            </div>
+
+            <!-- Live Video Feed -->
+            <div class="card">
+                <h2>Live Camera Feed</h2>
+                <div id="video-container">
+                    <img id="video-feed" src="{{ url_for('video_feed') }}" alt="Live Feed">
+                    <button id="captureBtn" onclick="capturePhoto()">Capture Photo</button>
+                </div>
+                <p style="color: rgba(255,255,255,0.8); margin-top: 10px; font-size: 0.9rem;">
+                    Click "Capture Photo" to save face
+                </p>
+            </div>
+        </div>
+
+        <!-- Encode & Attendance -->
+        <div class="grid" style="margin-top: 15px;">
+            <div class="card">
+                <h2>Train Model</h2>
+                <form action="/encode_faces" method="post">
+                    <button type="submit" class="btn encode">Encode All Faces</button>
+                </form>
+                <p style="color: rgba(255,255,255,0.7); margin-top: 10px; font-size: 0.9rem;">
+                    Run after adding new faces
+                </p>
+            </div>
+
+            <div class="card">
+                <h2>Today's Attendance</h2>
+                {% if attendance %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Roll</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in attendance %}
+                        <tr>
+                            <td>{{ row.name }}</td>
+                            <td>{{ row.roll }}</td>
+                            <td>{{ row.time }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="empty-state">No attendance recorded yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        let capturing = false;
+        let name, roll;
+
+        function startCapture() {
+            name = document.getElementById('name').value.trim();
+            roll = document.getElementById('roll').value.trim();
+            if (!name || !roll) {
+                showToast("Please enter name and roll number!");
+                return;
+            }
+            capturing = true;
+            document.getElementById('captureBtn').style.display = 'block';
+            showToast("Ready! Click 'Capture Photo' to save face.");
+        }
+
+        function capturePhoto() {
+            if (!capturing) return;
+
+            const video = document.getElementById('video-feed');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.naturalWidth || 640;
+            canvas.height = video.naturalHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(blob => {
+                const form = new FormData();
+                form.append('image', blob, 'face.jpg');
+                form.append('name', name);
+                form.append('roll', roll);
+
+                fetch('/capture', {
+                    method: 'POST',
+                    body: form
+                }).then(response => {
+                    if (response.ok) {
+                        showToast("Face captured successfully!");
+                    } else {
+                        showToast("Capture failed. Try again.");
+                    }
+                }).catch(() => {
+                    showToast("Network error.");
+                });
+            }, 'image/jpeg', 0.95);
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Auto-refresh attendance every 10 seconds
+        setInterval(() => {
+            fetch('/').then(r => r.text()).then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newTable = doc.querySelector('table')?.outerHTML || 
+                                doc.querySelector('.empty-state')?.outerHTML;
+                const oldTable = document.querySelector('table') || document.querySelector('.empty-state');
+                if (oldTable && newTable) {
+                    oldTable.outerHTML = newTable;
+                }
+            });
+        }, 10000);
+    </script>
+</body>
+</html>
